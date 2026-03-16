@@ -14,15 +14,22 @@ import plotly.graph_objects as go
 
 st.set_page_config(page_title="IOED HBT RF EXTRACTION ver5.2", layout="wide", page_icon="📡")
 
+## ═══════════════════════════════════════════════════════════════════════════════
+# 0. 🔐 實驗室專屬密碼鎖 (雲端安全與本機測試分流版)
 # ═══════════════════════════════════════════════════════════════════════════════
-# 0. 🔐 實驗室專屬密碼鎖 (全域統一密碼版)
-# ═══════════════════════════════════════════════════════════════════════════════
-# 👇 你可以直接在這裡修改實驗室的專屬密碼
-LAB_PASSWORD = "CHWUCHWUCHWU"
-
 def check_password():
     def password_entered():
-        if st.session_state["pwd_input"] == LAB_PASSWORD:
+        # 【最安全的作法：環境分流】
+        try:
+            # 嘗試讀取 Streamlit 雲端後台設定的真實密碼
+            # 這樣你的真實密碼永遠不會出現在 GitHub 的程式碼裡！
+            correct_pwd = st.secrets["APP_PASSWORD"]
+        except Exception:
+            # 如果發生錯誤 (代表在本機端測試，找不到 secrets.toml 檔案)
+            # 就自動降級使用「本機測試專用密碼」，確保程式不會崩潰
+            correct_pwd = "IOED"
+
+        if st.session_state["pwd_input"] == correct_pwd:
             st.session_state["authenticated"] = True
             del st.session_state["pwd_input"]
         else:
