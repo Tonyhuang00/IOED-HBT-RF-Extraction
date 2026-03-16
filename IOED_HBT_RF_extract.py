@@ -1,10 +1,3 @@
-# 核心升級:
-# 1. 拔除複雜的 st.secrets，採用全域統一密碼，消除環境報錯。
-# 2. 萃取演算法 extract_limit 完全遵守側邊欄的 freq_min 與 freq_max 設定。
-# 3. 自動遮蔽指定低頻以下的所有雜訊（預設 0.4 GHz 以下不列入萃取計算）。
-# 4. 保留負頻率發散保護、三態智慧判定，以及完美的 ADS 視覺佈局。
-# ==============================================================================
-
 import io, re, zipfile
 from pathlib import Path
 import numpy as np
@@ -14,19 +7,11 @@ import plotly.graph_objects as go
 
 st.set_page_config(page_title="IOED HBT RF EXTRACTION ver5.2", layout="wide", page_icon="📡")
 
-## ═══════════════════════════════════════════════════════════════════════════════
-# 0. 🔐 實驗室專屬密碼鎖 (雲端安全與本機測試分流版)
-# ═══════════════════════════════════════════════════════════════════════════════
 def check_password():
     def password_entered():
-        # 【最安全的作法：環境分流】
         try:
-            # 嘗試讀取 Streamlit 雲端後台設定的真實密碼
-            # 這樣你的真實密碼永遠不會出現在 GitHub 的程式碼裡！
             correct_pwd = st.secrets["APP_PASSWORD"]
         except Exception:
-            # 如果發生錯誤 (代表在本機端測試，找不到 secrets.toml 檔案)
-            # 就自動降級使用「本機測試專用密碼」，確保程式不會崩潰
             correct_pwd = "IOED"
 
         if st.session_state["pwd_input"] == correct_pwd:
@@ -41,27 +26,23 @@ def check_password():
     st.divider()
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        st.info("請輸入 IOED 實驗室專屬密碼以解鎖工具。")
-        st.text_input("Access Password", type="password", on_change=password_entered, key="pwd_input")
+        st.info("Please enter IOED Lab Password or ask HBT team members. / 請輸入 IOED 實驗室專屬密碼或向團隊成員索取。")
+        st.text_input("Access Password / 存取密碼", type="password", on_change=password_entered, key="pwd_input")
         if "authenticated" in st.session_state and not st.session_state["authenticated"]:
-            st.error("❌ 密碼錯誤 (Access Denied)")
+            st.error("❌ Password Incorrect (Access Denied) / 密碼錯誤 (拒絕存取)")
     return False
 
 if not check_password():
     st.stop()
 
-# ── 解鎖後的主介面 ──
 st.title("📡 IOED HBT RF Tool (Function Only · ver5.2)")
 st.caption("""
-**Core Settings:** Using NumPy, Extraction Range = Plot Range
-* If all below 0dB, return None
-* If cross 0dB before 50GHz, return cross section point
-* If no cross section above 50GHz, then using single extrapolate or UIUC method depending on the slope.
+**Core Settings / 核心設定:** Using NumPy, Extraction Range = Plot Range (萃取範圍與圖表同步)
+* If all below 0dB, return None (若全頻段低於 0dB，回傳空值)
+* If cross 0dB before 50GHz, return cross section point (若在 50GHz 前跌破 0dB，回傳交匯點頻率)
+* If no cross section above 50GHz, then using single extrapolate or UIUC method depending on the slope. (若超過 50GHz 未跌破 0dB，則根據斜率提供外插法與 UIUC 平台法雙輸出)
 """)
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# 1. Touchstone S2P Parser & Matrices
-# ═══════════════════════════════════════════════════════════════════════════════
 def parse_s2p(content: str):
     freq_unit, fmt, z0, data_lines = 'hz', 'ma', 50.0, []
     for line in content.splitlines():
@@ -117,11 +98,8 @@ def deembed_open_short(Y_dut, Y_open, Y_short): return z_to_y(y_to_z(Y_dut - Y_o
 def deembed_thru_half(Y_dut, Y_thru_deemb): return z_to_y(y_to_z(Y_dut) - 0.5 * y_to_z(Y_thru_deemb))
 def strict_freq_check(f_dut, f_dummy, dummy_name):
     if len(f_dut) != len(f_dummy) or not np.allclose(f_dut, f_dummy, rtol=1e-5):
-        raise ValueError(f"❌ 頻率網格不匹配：DUT 與 {dummy_name} 點數/範圍不同，嚴禁插值。")
+        raise ValueError(f"❌ Frequency mismatch (頻率不匹配): DUT and {dummy_name} have different points/ranges. Interpolation is prohibited. (嚴禁插值)")
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# 2. RF Metrics & 範圍同步智慧萃取邏輯
-# ═══════════════════════════════════════════════════════════════════════════════
 def compute_metrics(Y, freq_hz):
     f = freq_hz * 1e-9
     y11, y12, y21, y22 = Y[:, 0, 0], Y[:, 0, 1], Y[:, 1, 0], Y[:, 1, 1]
@@ -204,9 +182,6 @@ def extract_limit(freq_ghz, gain_db, plateau_arr, n_pts, f_min, f_max):
 
     return v_cross, np.nan, "0dB Cross"
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# 3. Processing Pipeline
-# ═══════════════════════════════════════════════════════════════════════════════
 def process_dut(content, filename, s1_o, s1_s, s2_o, s2_s, s3_t, n_pts, f_min, f_max):
     freq, S, z0 = parse_s2p(content)
     Y_raw = s_to_y(S, z0)
@@ -274,9 +249,6 @@ def process_dut(content, filename, s1_o, s1_s, s2_o, s2_s, s3_t, n_pts, f_min, f
         "fmax MAG Cross/Extrap (GHz)": fmM_cr, "fmax MAG Plateau (GHz)": fmM_pl, "fmax MAG Method": fmM_m,
     }
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# 4. Plotting & UI Helpers
-# ═══════════════════════════════════════════════════════════════════════════════
 PALETTE = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"]
 
 def _darken(c):
@@ -308,7 +280,7 @@ def make_bode(df, title, xr, yr, sh21, su, smag, color):
     if su: fig.add_trace(go.Scatter(x=f, y=df["Mason U (dB)"], name="Mason U", line=dict(color=_darken(color), width=2.5, dash="dash"), hovertemplate=hov))
     if smag: fig.add_trace(go.Scatter(x=f, y=df["MAG/MSG (dB)"], name="MAG/MSG", line=dict(color="#2ca02c", width=2.5, dash="dot"), hovertemplate=hov))
     fig.add_hline(y=0, line_dash="dash", line_color="black", annotation_text="0 dB", annotation_position="bottom right")
-    fig.update_layout(**_layout(f"Bode: {title}", "Gain (dB)", yr, xr))
+    fig.update_layout(**_layout(f"Bode Plot — {title}", "Gain (dB)", yr, xr))
     return fig
 
 def make_plateau(df, res, title, xr, sh21, su, smag, color):
@@ -328,8 +300,8 @@ def make_plateau(df, res, title, xr, sh21, su, smag, color):
         _hline_plateau(fig, v_fu, _darken(color), "fmax(U)")
     if smag:
         fig.add_trace(go.Scatter(x=f, y=df["fmax MAG Plateau (GHz)"], name="fmax (f×√MAG)", line=dict(color="#2ca02c", width=2.5, dash="dot"), hovertemplate=hov))
-    layout = _layout(f"Plateau: {title}", "GBP (GHz)", [0, y_max], xr)
-    layout["annotations"] = [dict(x=0.5, y=1.06, xref="paper", yref="paper", showarrow=False, text="<b>判讀：</b>中高頻趨於平坦的水平值即為 fT/fmax", font=dict(size=10), bgcolor="rgba(255,255,0,0.3)", bordercolor="#aaa", borderwidth=1)]
+    layout = _layout(f"Plateau Plot — {title}", "GBP (GHz)", [0, y_max], xr)
+    layout["annotations"] = [dict(x=0.5, y=1.06, xref="paper", yref="paper", showarrow=False, text="<b>Note (判讀):</b> The flat level at mid-high frequencies represents fT/fmax", font=dict(size=10), bgcolor="rgba(255,255,0,0.3)", bordercolor="#aaa", borderwidth=1)]
     fig.update_layout(**layout)
     return fig
 
@@ -354,40 +326,37 @@ def build_excel(summary_df, all_data):
 def _load_cal(fobj):
     if fobj is None: return None
     try: return parse_s2p(fobj.getvalue().decode("utf-8", errors="ignore"))
-    except Exception as e: st.sidebar.error(f"解析 {fobj.name} 失敗：{e}"); return None
+    except Exception as e: st.sidebar.error(f"Failed to parse (解析失敗) {fobj.name}: {e}"); return None
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# 5. Sidebar & Main
-# ═══════════════════════════════════════════════════════════════════════════════
 with st.sidebar:
-    st.markdown("## ⚙️ 設定")
-    st.markdown("#### 🔧 3段式 De-embedding")
+    st.markdown("## ⚙️ Settings / 設定")
+    st.markdown("#### 🔧 3-Step De-embedding / 三段式去嵌入")
     sw1 = st.toggle("① Probe / SLOT (Open-Short)", value=False)
     c1, c2 = st.columns(2)
-    f1o = st.file_uploader("Probe Open", type=["s2p"]) if sw1 else None
-    f1s = st.file_uploader("Probe Short", type=["s2p"]) if sw1 else None
+    f1o = st.file_uploader("Probe Open / 探針開路", type=["s2p"]) if sw1 else None
+    f1s = st.file_uploader("Probe Short / 探針短路", type=["s2p"]) if sw1 else None
 
     st.divider()
     sw2 = st.toggle("② Device Dummy (Open-Short)", value=False)
     c3, c4 = st.columns(2)
-    f2o = st.file_uploader("Dev Open", type=["s2p"]) if sw2 else None
-    f2s = st.file_uploader("Dev Short", type=["s2p"]) if sw2 else None
+    f2o = st.file_uploader("Dev Open / 元件開路", type=["s2p"]) if sw2 else None
+    f2s = st.file_uploader("Dev Short / 元件短路", type=["s2p"]) if sw2 else None
 
     st.divider()
     sw3 = st.toggle("③ Device Thru (Koolen Half-Z)", value=False)
-    f3t = st.file_uploader("Dev Thru", type=["s2p"]) if sw3 else None
+    f3t = st.file_uploader("Dev Thru / 元件直通", type=["s2p"]) if sw3 else None
 
     st.divider()
-    st.markdown("#### 📊 圖表與萃取控制")
-    freq_min = st.number_input("頻率下限 (GHz)", value=0.4, min_value=0.0001, format="%.4f")
-    freq_max = st.number_input("頻率上限 (GHz)", value=50.0, min_value=1.0)
-    db_min = st.number_input("Bode Y 下限 (dB)", value=-50.0)
-    db_max = st.number_input("Bode Y 上限 (dB)", value=50.0)
-    n_pts = st.slider("內外插點數 (n_pts)", 2, 10, 2)
-    show_raw = st.checkbox("疊加 Raw（de-emb 前）", value=True, disabled=not (sw1 or sw2 or sw3))
+    st.markdown("#### 📊 Chart & Extraction Control / 圖表與萃取控制")
+    freq_min = st.number_input("Freq Min (GHz) / 頻率下限", value=0.4, min_value=0.0001, format="%.4f")
+    freq_max = st.number_input("Freq Max (GHz) / 頻率上限", value=50.0, min_value=1.0)
+    db_min = st.number_input("Gain Y Min (dB) / 響應下限", value=-50.0)
+    db_max = st.number_input("Gain Y Max (dB) / 響應上限", value=50.0)
+    n_pts = st.slider("Interpolation points / 內外插點數 (n_pts)", 2, 10, 2)
+    show_raw = st.checkbox("Overlay Raw Data (Pre de-emb) / 疊加去嵌入前原始數據", value=True, disabled=not (sw1 or sw2 or sw3))
 
 st.markdown("---")
-dut_files = st.file_uploader("上傳 DUT .s2p 檔案（可多選）", type=["s2p"], accept_multiple_files=True)
+dut_files = st.file_uploader("Upload DUT .s2p files (Multiple) / 上傳 DUT .s2p 檔案 (可多選)", type=["s2p"], accept_multiple_files=True)
 if not dut_files: st.stop()
 
 s1o, s1s = _load_cal(f1o) if sw1 else None, _load_cal(f1s) if sw1 else None
@@ -410,10 +379,10 @@ file_names = list(all_data.keys())
 left, right = st.columns([1, 4], gap="medium")
 
 with left:
-    st.markdown("### 📂 檔案清單")
+    st.markdown("### 📂 File List / 檔案清單")
     selected = [n for n in file_names if st.checkbox(Path(n).stem, value=True, key=f"cb_{n}")]
     st.divider()
-    st.markdown("##### 📈 Trace 選擇")
+    st.markdown("##### 📈 Trace Selection / 曲線選擇")
     sh21 = st.checkbox("|h21|² → fT", value=True, key="sh21")
     su = st.checkbox("Mason U → fmax(U)", value=True, key="su")
     smag = st.checkbox("MAG/MSG → fmax(MAG)", value=True, key="smag")
@@ -427,14 +396,13 @@ with left:
 xr, yr = (freq_min, freq_max), (db_min, db_max)
 
 with right:
-    tab_ov, tab_ind, tab_sum = st.tabs(["📊 Overlay", "📁 個別檔案", "📋 Summary"])
+    tab_ov, tab_ind, tab_sum = st.tabs(["📊 Overlay / 疊圖", "📁 Individual Files / 個別檔案", "📋 Summary / 總結"])
 
-    # ── Overlay ─────────────────────────────────────────────────────────────
     with tab_ov:
         if not selected:
-            st.info("請勾選至少一個檔案。")
+            st.info("Please select at least one file. / 請勾選至少一個檔案。")
         elif not (sh21 or su or smag):
-            st.info("請至少勾選一個 Trace。")
+            st.info("Please select at least one trace. / 請至少勾選一條曲線。")
         else:
             def _ov_bode():
                 fig = go.Figure()
@@ -455,12 +423,11 @@ with right:
                     if smag: fig.add_trace(go.Scatter(x=df_p["Freq (GHz)"], y=df_p["MAG/MSG (dB)"], name=f"MAG–{lbl}",
                                                       line=dict(color=c, width=2, dash="dot"), opacity=0.7, hovertemplate=hov2))
                 fig.add_hline(y=0, line_dash="dash", line_color="black")
-                fig.update_layout(**_layout("Overlay — Bode", "Gain (dB)", yr, xr))
+                fig.update_layout(**_layout("Overlay — Bode Plot", "Gain (dB)", yr, xr))
                 return fig
 
-
             def _ov_plat():
-                fig = go.Figure();
+                fig = go.Figure()
                 all_v = []
                 for i, n in enumerate(file_names):
                     if n not in selected: continue
@@ -480,23 +447,21 @@ with right:
                         all_v.extend(valid_fu)
                 arr = np.array([v for v in all_v if np.isfinite(v) and v > 0])
                 ym = float(np.quantile(arr, 0.97)) * 1.3 if len(arr) else 100
-                fig.update_layout(**_layout("Overlay — UIUC Plateau", "GBP (GHz)", [0, ym], xr))
+                fig.update_layout(**_layout("Overlay — UIUC Plateau Plot", "GBP (GHz)", [0, ym], xr))
                 return fig
 
-
-            sub1, sub2 = st.tabs(["Bode Plot", "UIUC Plateau Plot"])
+            sub1, sub2 = st.tabs(["Bode Plot / 波德圖", "UIUC Plateau Plot / UIUC Plateau法"])
             with sub1:
                 st.plotly_chart(_ov_bode(), use_container_width=True)
             with sub2:
                 st.plotly_chart(_ov_plat(), use_container_width=True)
 
-    # ── Individual Files ─────────────────────────────────────────────────────
     with tab_ind:
         if not selected:
-            st.info("請勾選至少一個檔案。")
+            st.info("Please select at least one file. / 請勾選至少一個檔案。")
         else:
             def _fmt_card(v_cr, v_pl, method):
-                if method == "No Gain" or method == "No Data": return method
+                if method in ["No Gain", "No Data", "Beyond Range"]: return method
                 if method == "0dB Cross": return f"{v_cr:.3f} GHz" if np.isfinite(v_cr) else "N/A"
                 if method == "Extrap & Plat.": return f"{v_pl:.3f} GHz" if np.isfinite(v_pl) else "N/A"
                 return "N/A"
@@ -527,58 +492,12 @@ with right:
                     with p2:
                         st.plotly_chart(make_plateau(df_p, d, Path(n).stem, xr, sh21, su, smag, c), use_container_width=True)
 
-                    with st.expander("📋 數據表"):
+                    with st.expander("📋 Data Table / 數據表"):
                         if d["df_fin"] is not None:
-                            ta, tb = st.tabs(["De-embedded", "Raw"])
+                            ta, tb = st.tabs(["De-embedded / 已去嵌入", "Raw / 原始數據"])
                             with ta:
                                 st.dataframe(df_p.round(4), use_container_width=True, hide_index=True)
                             with tb:
                                 st.dataframe(d["df_raw"].round(4), use_container_width=True, hide_index=True)
                         else:
                             st.dataframe(df_p.round(4), use_container_width=True, hide_index=True)
-
-    # ── Summary ──────────────────────────────────────────────────────────────
-    with tab_sum:
-        rows = []
-        for k, d in all_data.items():
-            rows.append({
-                "File": k,
-                "De-embedding": d["De-embedding"],
-                "Vce (V)": d["Vce (V)"],
-                "Ib (µA)": round(d["Ib (A)"] * 1e6, 1) if d["Ib (A)"] else None,
-                "fT Cross/Extp": d["fT Cross/Extrap (GHz)"],
-                "fT Plateau": d["fT Plateau (GHz)"],
-                "fT Method": d["fT Method"],
-                "fmax U Cross/Extp": d["fmax U Cross/Extrap (GHz)"],
-                "fmax U Plateau": d["fmax U Plateau (GHz)"],
-                "fmax U Method": d["fmax U Method"],
-                "fmax MAG Cross/Extp": d["fmax MAG Cross/Extrap (GHz)"],
-                "fmax MAG Plateau": d["fmax MAG Plateau (GHz)"],
-            })
-
-        sum_df = pd.DataFrame(rows)
-        st.markdown(f"### fT & fmax 摘要 (萃取範圍：{freq_min} ~ {freq_max} GHz)")
-
-        fmt = {"Vce (V)": "{:.3f}", "Ib (µA)": "{:.1f}"}
-        for col in sum_df.columns:
-            if "Cross/Extp" in col or "Plateau" in col: fmt[col] = "{:.4f}"
-
-        styled = sum_df.style.format(fmt, na_rep="—")
-        st.dataframe(styled, use_container_width=True, hide_index=True)
-
-        st.markdown("---")
-        d1, d2 = st.columns(2)
-        with d1:
-            st.download_button("📥 Excel", data=build_excel(sum_df, all_data), file_name="HBT_PureMath_v5.2.xlsx",
-                               mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                               use_container_width=True)
-        with d2:
-            zbuf = io.BytesIO()
-            with zipfile.ZipFile(zbuf, "w", zipfile.ZIP_DEFLATED) as zf:
-                zf.writestr("Summary.csv", sum_df.to_csv(index=False).encode())
-                for k, d in all_data.items():
-                    df_p = d["df_fin"] if d["df_fin"] is not None else d["df_raw"]
-                    stem = Path(k).stem
-                    zf.writestr(f"{stem}.csv", df_p.to_csv(index=False).encode())
-            st.download_button("📦 ZIP (CSV)", data=zbuf.getvalue(), file_name="HBT_PureMath_v5.2.zip",
-                               mime="application/zip", use_container_width=True)
