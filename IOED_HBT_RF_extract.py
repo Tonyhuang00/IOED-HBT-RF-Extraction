@@ -4,6 +4,8 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 import plotly.graph_objects as go
+from datetime import datetime
+
 
 st.set_page_config(page_title="IOED HBT RF EXTRACTION Beta v2.1", layout="wide", page_icon="📡")
 
@@ -43,11 +45,12 @@ if "uploader_key" not in st.session_state:
 st.title("📡 IOED HBT RF Extraction Tool (Function Only · Beta v2.1)")
 st.caption("""
 **Core Settings / 核心設定:** Using NumPy, Extraction Range = Plot Range (萃取範圍與圖表同步)\n
-**Beta v2.0**:Fix Merge Problem and add Smith Chart function / 修正總結空白問題與新增Smith圖
+**Beta v2.0**:Fix Merge Problem and add Smith Chart function / 修正總結空白問題與新增Smith圖\n
 **Beta v2.1**:Add clear all upload file bottom / 新增一鍵清除上傳檔案按鈕
 * If all below 0dB, return None (若全頻段低於 0dB，回傳空值)
 * If cross 0dB before 50GHz, return cross section point (若在 50GHz 前跌破 0dB，回傳交匯點頻率)
 * If no cross section above 50GHz, then using single extrapolate or UIUC method depending on the slope. (若超過 50GHz 未跌破 0dB，則根據斜率提供外插法與 UIUC 平台法雙輸出)
+* The download file name will be "RF_extraction_date" automatically /下載的檔案名稱會自動命名為"RF_extraction_當天日期"
 """)
 
 def parse_s2p(content: str):
@@ -691,8 +694,9 @@ with tab_sum:
         fmt["Ib (µA)"] = "{:.1f}"
         st.dataframe(sum_df.style.format(fmt, na_rep="—"), use_container_width=True, hide_index=True)
         d1, d2 = st.columns(2)
+        date = datetime.now().strftime("%Y/%m/%d")
         with d1:
-            st.download_button("📥 Excel", data=build_excel(sum_df, all_data), file_name="HBT_PureMath_v7.0.xlsx",
+            st.download_button("📥 Excel", data=build_excel(sum_df, all_data), file_name=f"RF_extraction_{date}.xlsx",
                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                use_container_width=True)
         with d2:
@@ -703,5 +707,5 @@ with tab_sum:
                     df_p = d["df_fin"] if d["df_fin"] is not None else d["df_raw"]
                     stem = Path(k).stem
                     zf.writestr(f"{stem}.csv", df_p.to_csv(index=False).encode())
-            st.download_button("📦 ZIP (CSV)", data=zbuf.getvalue(), file_name="HBT_PureMath_v7.0.zip",
+            st.download_button("📦 ZIP (CSV)", data=zbuf.getvalue(), file_name=f"RF_extraction_{date}.zip",
                                mime="application/zip", use_container_width=True)
