@@ -5,7 +5,7 @@ import pandas as pd
 import streamlit as st
 import plotly.graph_objects as go
 
-st.set_page_config(page_title="IOED HBT RF EXTRACTION", layout="wide", page_icon="📡")
+st.set_page_config(page_title="IOED HBT RF EXTRACTION Beta v2.1", layout="wide", page_icon="📡")
 
 
 def check_password():
@@ -40,13 +40,15 @@ if not check_password():
 if "uploader_key" not in st.session_state:
     st.session_state["uploader_key"] = 0
 
-st.title("📡 IOED HBT RF Tool")
-
+st.title("📡 IOED HBT RF Extraction Tool (Function Only · Beta v2.1)")
 st.caption("""
-**Core Settings / 核心設定:** Using NumPy, Extraction Range = Plot Range (萃取範圍與圖表同步)  
-**Version 7.0:** Full-Width UI layout, Pre-rendered Plots, and Vertical Stacked Overlay / 滿版視覺重構、無檔案預載圖表、垂直疊圖
+**Core Settings / 核心設定:** Using NumPy, Extraction Range = Plot Range (萃取範圍與圖表同步)\n
+**Beta v2.0**:Fix Merge Problem and add Smith Chart function / 修正總結空白問題與新增Smith圖
+**Beta v2.1**:Add clear all upload file bottom / 新增一鍵清除上傳檔案按鈕
+* If all below 0dB, return None (若全頻段低於 0dB，回傳空值)
+* If cross 0dB before 50GHz, return cross section point (若在 50GHz 前跌破 0dB，回傳交匯點頻率)
+* If no cross section above 50GHz, then using single extrapolate or UIUC method depending on the slope. (若超過 50GHz 未跌破 0dB，則根據斜率提供外插法與 UIUC 平台法雙輸出)
 """)
-
 
 def parse_s2p(content: str):
     freq_unit, fmt, z0, data_lines = 'hz', 'ma', 50.0, []
